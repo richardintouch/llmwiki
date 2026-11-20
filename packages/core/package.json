@@ -26,7 +26,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "llmwiki-mcp": "./dist/mcp/bin.js"
+    "llmwiki-mcp": "./dist/mcp/bin.js",
+    "llmwiki-mcp-http": "./dist/mcp/http-bin.js"
   },
   "exports": {
     ".": {

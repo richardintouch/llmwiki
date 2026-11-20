@@ -19,6 +19,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspace=packages/core && npm run build --workspace=packages/vscode",
+    "mcp:http": "npm run build --workspace=packages/core && node packages/core/dist/mcp/http-bin.js",
     "test": "vitest run",
     "test:integration": "node tests/vscode/integration/build.mjs && node tests/vscode/integration/out/runTest.js",
     "coverage": "vitest run --coverage",

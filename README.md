@@ -171,6 +171,26 @@ Every tool declares a title and [annotations](https://modelcontextprotocol.io/sp
 
 If you have the LLM Wiki VS Code extension installed, the MCP server registers itself automatically through VS Code's `mcpServerDefinitionProviders` contribution. No JSON to edit — just initialize a wiki (`LLM Wiki: Initialize Wiki`) and the `LLM Wiki` server will appear in the Copilot MCP server list. The launcher is started on demand using the editor's bundled Node.
 
+### Local HTTP server
+
+Run the same MCP tools over Streamable HTTP:
+
+```powershell
+Set-Location C:\Mywork\repos\Elevate.llmwiki
+npm run mcp:http
+```
+
+The default address is `http://127.0.0.1:3000/mcp`; health is available at `http://127.0.0.1:3000/health`. The server binds only to loopback.
+
+Register it with Copilot CLI:
+
+```powershell
+copilot mcp add --transport http llmwiki http://127.0.0.1:3000/mcp
+copilot mcp get llmwiki
+```
+
+Override the listener or port with `LLMWIKI_HTTP_HOST` and `LLMWIKI_HTTP_PORT`.
+
 ### Copilot CLI, the GitHub Copilot app, and other agent plugin clients
 
 The [agent plugin](plugin) bundles the skills, the Wiki Librarian agent, and a self-contained MCP server (it needs Node.js 20+ on `PATH`):
