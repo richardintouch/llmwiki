@@ -207,6 +207,8 @@ Given a source document and the existing wiki index, produce a JSON analysis wit
 Rules:
 - Only create entities/concepts that are substantively discussed in the source, not just mentioned in passing.
 - Keep content concise but informative (1-3 paragraphs per page).
+- Preserve actionable operational information from the source: prerequisites, installation steps, command examples, configuration keys, file paths, UI actions, package names, endpoints, and model/deployment names.
+- Do not summarize installation/configuration sections into a generic capability sentence. Keep the concrete steps and commands needed by a reader.
 - Use markdown formatting: headers, bold, lists.
 - Tags should be lowercase, hyphenated keywords.
 - If the source has minimal content, return fewer or no entities/concepts.
@@ -340,6 +342,8 @@ Given a source document and the existing wiki index, produce a JSON analysis wit
 Rules:
 - Only create entities/concepts that are substantively discussed in the source, not just mentioned in passing.
 - Keep content concise but informative (1-3 paragraphs per page).
+- Preserve actionable operational information from the source: prerequisites, installation steps, command examples, configuration keys, file paths, UI actions, package names, endpoints, and model/deployment names.
+- Do not summarize installation/configuration sections into a generic capability sentence. Keep the concrete steps and commands needed by a reader.
 - Use markdown formatting: headers, bold, lists.
 - Tags should be lowercase, hyphenated keywords.
 - If the source has minimal content, return fewer or no entities/concepts.
