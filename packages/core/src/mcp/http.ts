@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { appendFile, mkdir } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -16,6 +18,7 @@ export interface LlmWikiHttpServerOptions {
   host?: string;
   port?: number;
   wikiRoot: string;
+  logFile?: string;
 }
 
 function setCorsHeaders(response: ServerResponse): void {
@@ -48,8 +51,41 @@ function sendJson(
   response.end(JSON.stringify(body));
 }
 
+async function appendHttpLog(
+  logFile: string,
+  entry: Record<string, unknown>,
+): Promise<void> {
+  await mkdir(dirname(logFile), { recursive: true });
+  await appendFile(logFile, `${JSON.stringify(entry)}\n`, 'utf8');
+}
+
+function getLogEntryBody(body: unknown): { method?: string; toolName?: string; argumentNames: string[] } {
+  if (!body || typeof body !== 'object') {
+    return { argumentNames: [] };
+  }
+
+  const request = body as {
+    method?: unknown;
+    params?: {
+      name?: unknown;
+      arguments?: unknown;
+    };
+  };
+  const argumentsValue = request.params?.arguments;
+  const argumentNames = argumentsValue && typeof argumentsValue === 'object'
+    ? Object.keys(argumentsValue).sort()
+    : [];
+
+  return {
+    method: typeof request.method === 'string' ? request.method : undefined,
+    toolName: typeof request.params?.name === 'string' ? request.params.name : undefined,
+    argumentNames,
+  };
+}
+
 export function createLlmWikiHttpServer(options: LlmWikiHttpServerOptions) {
   const host = options.host ?? '127.0.0.1';
+  const logFile = options.logFile ?? join(options.wikiRoot, 'logs', 'mcp-http.jsonl');
   const sessions = new Map<string, HttpSession>();
 
   const trackResponse = (session: HttpSession, response: ServerResponse): void => {
@@ -96,6 +132,25 @@ export function createLlmWikiHttpServer(options: LlmWikiHttpServerOptions) {
 
       if (request.method === 'POST') {
         const body = await readJsonBody(request);
+        const logEntryBody = getLogEntryBody(body);
+        if (logEntryBody.method === 'initialize') {
+          void appendHttpLog(logFile, {
+            timestamp: new Date().toISOString(),
+            action: 'initialize',
+          }).catch((error: unknown) => {
+            console.error('Failed to append MCP HTTP log:', error);
+          });
+        }
+        if (logEntryBody.method === 'tools/call' && logEntryBody.toolName) {
+          void appendHttpLog(logFile, {
+            timestamp: new Date().toISOString(),
+            action: 'tool_call',
+            tool: logEntryBody.toolName,
+            argumentNames: logEntryBody.argumentNames,
+          }).catch((error: unknown) => {
+            console.error('Failed to append MCP HTTP log:', error);
+          });
+        }
         const existingSession = sessionIdValue ? sessions.get(sessionIdValue) : undefined;
 
         if (existingSession) {

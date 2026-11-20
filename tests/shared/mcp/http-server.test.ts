@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -24,7 +24,13 @@ describe('LLM Wiki Streamable HTTP MCP server', () => {
     await initWiki(projectDirectory);
 
     const wikiRoot = join(projectDirectory, '.wiki');
-    const httpServer = createLlmWikiHttpServer({ wikiRoot, host: '127.0.0.1', port: 0 });
+    const logFile = join(projectDirectory, 'mcp-http.jsonl');
+    const httpServer = createLlmWikiHttpServer({
+      wikiRoot,
+      host: '127.0.0.1',
+      port: 0,
+      logFile,
+    });
 
     await new Promise<void>((resolve, reject) => {
       httpServer.once('error', reject);
@@ -47,6 +53,15 @@ describe('LLM Wiki Streamable HTTP MCP server', () => {
         arguments: {},
       });
       expect(result.isError).not.toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const logEntries = (await readFile(logFile, 'utf8'))
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(logEntries).toContainEqual(expect.objectContaining({
+        action: 'tool_call',
+        tool: 'wiki_list_pages',
+      }));
     } finally {
       await client.close();
       await new Promise<void>((resolve, reject) => {

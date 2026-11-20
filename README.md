@@ -182,6 +182,8 @@ npm run mcp:http
 
 The default address is `http://127.0.0.1:3000/mcp`; health is available at `http://127.0.0.1:3000/health`. The server binds only to loopback.
 
+Tool calls are appended to `.wiki/logs/mcp-http.jsonl`. Each line records the timestamp, action, tool name and argument names; tool arguments and page bodies are not recorded.
+
 Register it with Copilot CLI:
 
 ```powershell
