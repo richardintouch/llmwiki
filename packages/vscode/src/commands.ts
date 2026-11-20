@@ -154,6 +154,25 @@ export function registerCommands(
   const logPath = join(wikiDir, 'log.md');
   const rawDir = join(workspaceFolder, 'raw');
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand('llmwiki.configureAzureFoundryApiKey', async () => {
+      const apiKey = await vscode.window.showInputBox({
+        title: 'Configure Azure Foundry API Key',
+        prompt: 'Enter the API key. It will be stored in VS Code SecretStorage, not in settings or the repository.',
+        password: true,
+        ignoreFocusOut: true,
+      });
+      if (apiKey === undefined) return;
+      if (apiKey.trim().length === 0) {
+        await context.secrets.delete('llmwiki.azureFoundryApiKey');
+        vscode.window.showInformationMessage('LLM Wiki: Azure Foundry API key cleared.');
+        return;
+      }
+      await context.secrets.store('llmwiki.azureFoundryApiKey', apiKey.trim());
+      vscode.window.showInformationMessage('LLM Wiki: Azure Foundry API key configured securely.');
+    }),
+  );
+
   const refreshTrees = () => {
     providers.entities.refresh();
     providers.concepts.refresh();
@@ -293,7 +312,7 @@ export function registerCommands(
 
           try {
             const sourcePath = await ensureInRaw(uri.fsPath, rawDir, workspaceFolder);
-            const result = await llmIngest(sourcePath, workspaceFolder, false, outputChannel, progress, cancelToken);
+            const result = await llmIngest(sourcePath, workspaceFolder, false, outputChannel, progress, cancelToken, context.secrets);
             totalCreated += result.pagesCreated.length;
             totalUpdated += result.pagesUpdated.length;
             succeeded++;

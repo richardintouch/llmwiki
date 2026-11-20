@@ -122,7 +122,7 @@ function registerFullViews(
     outputChannel.appendLine(`[watcher] onDidCreate: ${uri.fsPath}`);
     rawSourcesProvider.refresh();
     // Auto-ingest new files with LLM
-    autoIngest(uri, wikiProjectRoot, outputChannel, wikiProviders);
+    autoIngest(uri, wikiProjectRoot, outputChannel, wikiProviders, context.secrets);
   });
   rawWatcher.onDidDelete((uri) => {
     outputChannel.appendLine(`[watcher] onDidDelete: ${uri.fsPath}`);
@@ -147,13 +147,13 @@ function registerFullViews(
   // Manual scan command — also resilient backup if the watcher misses an event.
   context.subscriptions.push(
     vscode.commands.registerCommand('llmwiki.scanRaw', () =>
-      scanRawForUningested(wikiProjectRoot, outputChannel, wikiProviders, true),
+      scanRawForUningested(wikiProjectRoot, outputChannel, wikiProviders, true, context.secrets),
     ),
   );
 
   // Startup scan — picks up any files added to raw/ while the extension
   // wasn't running, or that the watcher silently missed.
-  void scanRawForUningested(wikiProjectRoot, outputChannel, wikiProviders, false);
+  void scanRawForUningested(wikiProjectRoot, outputChannel, wikiProviders, false, context.secrets);
 }
 
 export function deactivate(): void {
@@ -167,6 +167,7 @@ async function scanRawForUningested(
   outputChannel: vscode.OutputChannel,
   providers: { entities: WikiPagesTreeDataProvider; concepts: WikiPagesTreeDataProvider; rawSources: RawSourcesTreeDataProvider },
   interactive: boolean,
+  secretStorage: vscode.SecretStorage,
 ): Promise<void> {
   const rawDir = join(wikiProjectRoot, 'raw');
   const sourcesDir = join(wikiProjectRoot, 'wiki', 'sources');
@@ -248,7 +249,7 @@ async function scanRawForUningested(
             increment: 100 / orphans.length,
           });
           try {
-            await llmIngest(filePath, wikiProjectRoot, false, outputChannel, progress, token);
+            await llmIngest(filePath, wikiProjectRoot, false, outputChannel, progress, token, secretStorage);
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             outputChannel.appendLine(`[scan] Failed for ${filePath}: ${msg}`);
@@ -278,6 +279,7 @@ async function autoIngest(
   wikiProjectRoot: string,
   outputChannel: vscode.OutputChannel,
   providers: { entities: WikiPagesTreeDataProvider; concepts: WikiPagesTreeDataProvider; rawSources: RawSourcesTreeDataProvider },
+  secretStorage: vscode.SecretStorage,
 ): Promise<void> {
   // Skip directories — file watchers fire for both files and folders
   const fileStat = await vscode.workspace.fs.stat(uri);
@@ -302,7 +304,7 @@ async function autoIngest(
         cancellable: true,
       },
       async (progress, token) => {
-        return llmIngest(filePath, wikiProjectRoot, false, outputChannel, progress, token);
+        return llmIngest(filePath, wikiProjectRoot, false, outputChannel, progress, token, secretStorage);
       },
     );
 

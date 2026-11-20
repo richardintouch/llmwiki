@@ -143,7 +143,23 @@ VS Code [deprecated chat participants](https://code.visualstudio.com/api/extensi
 
 | Setting | Default | Description |
 |---------|---------|-------------|
+| `llmwiki.modelProvider` | `azureFoundry` | Provider used for ingestion enrichment. Set to `copilot` to use GitHub Copilot instead. |
+| `llmwiki.azureFoundryEndpoint` | `https://ANZ-OpenAI-Internal.services.ai.azure.com/openai/v1` | OpenAI-compatible Microsoft Foundry endpoint. |
+| `llmwiki.azureFoundryDeployment` | `gpt-6-luna` | Microsoft Foundry deployment name. |
+| `llmwiki.azureFoundryApiKeyEnvironmentVariable` | `AZURE_OPENAI_API_KEY` | Environment variable containing the Foundry API key; never store the key in settings. |
+| `llmwiki.azureFoundryApiKeyFile` | `C:\Mywork\repos\az_cto_devreporter\apikey.txt` | Optional local plain-text key file. |
 | `llmwiki.modelFamily` | `claude-opus-4.6` | Preferred GitHub Copilot model family for LLM-powered ingestion. Falls back to any available Copilot model when the requested family isn't installed; leave blank to always use the first available model. Run **LLM Wiki: Select Model** to pick one interactively. |
+
+### Running with Azure Foundry
+
+Set the API key only in the environment used to launch VS Code:
+
+```powershell
+$env:AZURE_OPENAI_API_KEY = '<your-api-key>'
+code --reuse-window C:\Mywork\repos\Elevate.llmwiki
+```
+
+The default provider is `azureFoundry`, with `gpt-6-luna` and the ANZ OpenAI-compatible endpoint. To use GitHub Copilot instead, set `llmwiki.modelProvider` to `copilot`.
 
 ## MCP Server
 

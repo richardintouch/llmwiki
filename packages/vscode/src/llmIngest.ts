@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
+import OpenAI from 'openai';
 import { join } from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { extractText } from './extractText';
 import { selectPreferredModel } from './modelSelection';
 import {
@@ -37,6 +39,7 @@ export async function llmIngest(
   outputChannel: vscode.OutputChannel,
   progress: vscode.Progress<{ message?: string; increment?: number }>,
   token: vscode.CancellationToken,
+  secretStorage?: vscode.SecretStorage,
 ): Promise<{ pagesCreated: string[]; pagesUpdated: string[] }> {
   const wikiDir = join(workspaceFolder, 'wiki');
   const indexPath = join(wikiDir, 'index.md');
@@ -87,7 +90,7 @@ export async function llmIngest(
   // ── Step 3: Call VS Code Copilot LLM ─────────────────────────
   progress.report({ message: 'Analysing with LLM…' });
 
-  const analysis = await callLlm(sourceContent, wikiContext, outputChannel, token);
+  const analysis = await callLlm(sourceContent, wikiContext, outputChannel, token, secretStorage);
   if (!analysis) {
     outputChannel.appendLine('[llmIngest] LLM analysis returned nothing — skipping enrichment');
     return { pagesCreated, pagesUpdated };
@@ -163,7 +166,28 @@ async function callLlm(
   wikiContext: string,
   outputChannel: vscode.OutputChannel,
   token: vscode.CancellationToken,
+  secretStorage?: vscode.SecretStorage,
 ): Promise<LlmAnalysis | null> {
+  const configuration = vscode.workspace.getConfiguration('llmwiki');
+  const provider = configuration.get<string>('modelProvider', 'azureFoundry');
+
+  // Truncate very large sources to stay within context limits
+  const maxSourceChars = 60_000;
+  const truncatedSource = sourceContent.length > maxSourceChars
+    ? sourceContent.slice(0, maxSourceChars) + '\n\n[…truncated]'
+    : sourceContent;
+
+  if (provider === 'azureFoundry') {
+    return callAzureFoundry(
+      truncatedSource,
+      wikiContext,
+      outputChannel,
+      token,
+      configuration,
+      secretStorage,
+    );
+  }
+
   const model = await selectPreferredModel(outputChannel);
   if (!model) {
     outputChannel.appendLine('[llmIngest] No Copilot model available — falling back to mechanical ingest');
@@ -171,12 +195,6 @@ async function callLlm(
   }
 
   outputChannel.appendLine(`[llmIngest] Using model: ${model.family}`);
-
-  // Truncate very large sources to stay within context limits
-  const maxSourceChars = 60_000;
-  const truncatedSource = sourceContent.length > maxSourceChars
-    ? sourceContent.slice(0, maxSourceChars) + '\n\n[…truncated]'
-    : sourceContent;
 
   const systemPrompt = `You are a wiki knowledge-base builder. You analyse source documents and extract structured knowledge.
 
@@ -225,6 +243,115 @@ ${truncatedSource}`;
     }
     return null;
   }
+}
+
+async function callAzureFoundry(
+  truncatedSource: string,
+  wikiContext: string,
+  outputChannel: vscode.OutputChannel,
+  token: vscode.CancellationToken,
+  configuration: vscode.WorkspaceConfiguration,
+  secretStorage?: vscode.SecretStorage,
+): Promise<LlmAnalysis | null> {
+  const endpoint = configuration.get<string>(
+    'azureFoundryEndpoint',
+    'https://ANZ-OpenAI-Internal.services.ai.azure.com/openai/v1',
+  );
+  const deployment = configuration.get<string>('azureFoundryDeployment', 'gpt-6-luna');
+  const apiKeyEnvironmentVariable = configuration.get<string>(
+    'azureFoundryApiKeyEnvironmentVariable',
+    'AZURE_OPENAI_API_KEY',
+  );
+  const secretApiKey = await secretStorage?.get('llmwiki.azureFoundryApiKey');
+  let fileApiKey: string | undefined;
+  const apiKeyFile = configuration.get<string>(
+    'azureFoundryApiKeyFile',
+    'C:\\Mywork\\repos\\az_cto_devreporter\\apikey.txt',
+  );
+  if (!secretApiKey && !process.env[apiKeyEnvironmentVariable]) {
+    try {
+      fileApiKey = (await readFile(apiKeyFile, 'utf8')).trim();
+    } catch {
+      fileApiKey = undefined;
+    }
+  }
+  const apiKey = secretApiKey
+    || process.env[apiKeyEnvironmentVariable]
+    || fileApiKey;
+
+  if (!apiKey) {
+    throw new Error(
+      `Azure Foundry API key is missing. Use "LLM Wiki: Configure Azure Foundry API Key", set ${apiKeyEnvironmentVariable}, or configure llmwiki.azureFoundryApiKeyFile.`,
+    );
+  }
+
+  const client = new OpenAI({
+    baseURL: endpoint,
+    apiKey,
+  });
+  const { systemPrompt, userMessage } = createLlmPrompts(truncatedSource, wikiContext);
+  const abortController = new AbortController();
+  const cancellationSubscription = token.onCancellationRequested(() => abortController.abort());
+
+  try {
+    outputChannel.appendLine(`[llmIngest] Using Azure Foundry model: ${deployment}`);
+    const response = await client.responses.create(
+      {
+        model: deployment,
+        input: `${systemPrompt}\n\n${userMessage}`,
+      },
+      { signal: abortController.signal },
+    );
+
+    const fullResponse = response.output_text
+      ?? response.output
+        .filter((item) => item.type === 'message')
+        .map((item) => item.content
+          .filter((content) => content.type === 'output_text')
+          .map((content) => content.text)
+          .join(''))
+        .join('');
+
+    outputChannel.appendLine(`[llmIngest] LLM response length: ${fullResponse.length} chars`);
+    return parseLlmResponse(fullResponse, outputChannel);
+  } catch (err) {
+    if (abortController.signal.aborted) {
+      outputChannel.appendLine('[llmIngest] Azure Foundry request cancelled');
+      return null;
+    }
+    throw err instanceof Error ? err : new Error(String(err));
+  } finally {
+    cancellationSubscription.dispose();
+  }
+}
+
+function createLlmPrompts(
+  truncatedSource: string,
+  wikiContext: string,
+): { systemPrompt: string; userMessage: string } {
+  const systemPrompt = `You are a wiki knowledge-base builder. You analyse source documents and extract structured knowledge.
+
+Given a source document and the existing wiki index, produce a JSON analysis with:
+1. "summary": A rich markdown summary of the source (2-4 paragraphs). Include key findings, arguments, and data points. This replaces the mechanical preview.
+2. "entities": Named things (people, organizations, products, places) worth their own wiki page. Each has "name", "content" (markdown body for the page), and "tags" (array of strings).
+3. "concepts": Ideas, techniques, patterns, or topics worth their own wiki page. Each has "name", "content" (markdown body), and "tags".
+4. "crosslinks": Links between pages. Each has "from" (relative path like "entities/foo.md" or "sources/bar-summary.md") and "to" (array of relative paths). Only link to pages that will exist after this analysis (existing pages from the index OR new entity/concept pages you are creating). Entity pages are at "entities/{slugified-name}.md", concept pages at "concepts/{slugified-name}.md". Slugify = lowercase, replace spaces/special chars with hyphens, remove consecutive hyphens.
+
+Rules:
+- Only create entities/concepts that are substantively discussed in the source, not just mentioned in passing.
+- Keep content concise but informative (1-3 paragraphs per page).
+- Use markdown formatting: headers, bold, lists.
+- Tags should be lowercase, hyphenated keywords.
+- If the source has minimal content, return fewer or no entities/concepts.
+- Respond with ONLY valid JSON. No markdown fences, no explanation.`;
+
+  const userMessage = `## Existing Wiki Pages
+${wikiContext}
+
+## Source Document
+${truncatedSource}`;
+
+  return { systemPrompt, userMessage };
 }
 
 function parseLlmResponse(raw: string, outputChannel: vscode.OutputChannel): LlmAnalysis | null {

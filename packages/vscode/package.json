@@ -69,6 +69,10 @@
     ],
     "commands": [
       {
+        "command": "llmwiki.configureAzureFoundryApiKey",
+        "title": "LLM Wiki: Configure Azure Foundry API Key"
+      },
+      {
         "command": "llmwiki.init",
         "title": "LLM Wiki: Initialize Wiki"
       },
@@ -242,6 +246,35 @@
     "configuration": {
       "title": "LLM Wiki",
       "properties": {
+        "llmwiki.modelProvider": {
+          "type": "string",
+          "enum": [
+            "azureFoundry",
+            "copilot"
+          ],
+          "default": "azureFoundry",
+          "description": "LLM provider used for ingestion enrichment. Azure Foundry is the default."
+        },
+        "llmwiki.azureFoundryEndpoint": {
+          "type": "string",
+          "default": "https://ANZ-OpenAI-Internal.services.ai.azure.com/openai/v1",
+          "description": "OpenAI-compatible Microsoft Foundry endpoint."
+        },
+        "llmwiki.azureFoundryDeployment": {
+          "type": "string",
+          "default": "gpt-6-luna",
+          "description": "Microsoft Foundry model deployment name."
+        },
+        "llmwiki.azureFoundryApiKeyEnvironmentVariable": {
+          "type": "string",
+          "default": "AZURE_OPENAI_API_KEY",
+          "description": "Name of the environment variable containing the Azure Foundry API key. Never store the key in settings."
+        },
+        "llmwiki.azureFoundryApiKeyFile": {
+          "type": "string",
+          "default": "C:\\Mywork\\repos\\az_cto_devreporter\\apikey.txt",
+          "description": "Optional local text file containing the Azure Foundry API key. Used after SecretStorage and environment variables."
+        },
         "llmwiki.modelFamily": {
           "type": "string",
           "default": "claude-opus-4.6",
@@ -261,6 +294,7 @@
   "dependencies": {
     "@llmwiki/core": "*",
     "mammoth": "^1.12.0",
+    "openai": "^7.62.0",
     "pdfjs-dist": "^4.10.38"
   },
   "devDependencies": {
